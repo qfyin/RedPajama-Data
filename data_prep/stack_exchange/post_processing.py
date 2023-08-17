@@ -2,7 +2,7 @@ import re
 import os
 import sys
 import json
-import fasttext
+# import fasttext
 from bs4 import BeautifulSoup
 from multiprocessing import Pool
 
@@ -19,20 +19,21 @@ def cleanhtml(raw_html):
     soup = BeautifulSoup(raw_html, "lxml")
     return soup.get_text()
     
-class LanguageIdentification:
+# class LanguageIdentification:
 
-    def __init__(self):
-        pretrained_lang_model = "data/lid.176.bin"
-        self.model = fasttext.load_model(pretrained_lang_model)
+#     def __init__(self):
+#         pretrained_lang_model = "data/lid.176.bin"
+#         self.model = fasttext.load_model(pretrained_lang_model)
 
-    def predict_lang(self, text):
-        text = text.replace("\n", " ")
-        predictions = self.model.predict(text, k=1) # returns top 2 matching languages
-        return predictions[0][0].replace("__label__", "")
+#     def predict_lang(self, text):
+#         text = text.replace("\n", " ")
+#         predictions = self.model.predict(text, k=1) # returns top 2 matching languages
+#         return predictions[0][0].replace("__label__", "")
 
-lang_id = LanguageIdentification()
-LEMMA_DATA_DIR_SE = os.environ.get("LEMMA_DATA_DIR_SE", "./data/")
-LEMMA_DATA_DIR_SE_OUT = os.environ.get("LEMMA_DATA_DIR_SE_OUT", "./data/")
+# lang_id = LanguageIdentification()
+
+LEMMA_DATA_DIR_SE = os.environ.get("LEMMA_DATA_DIR_SE", "./data/stack_exchange/")
+LEMMA_DATA_DIR_SE_OUT = os.environ.get("LEMMA_DATA_DIR_SE_OUT", "./data/stack_exchange/")
 
 os.makedirs(os.path.join(LEMMA_DATA_DIR_SE_OUT), exist_ok=True)
 
@@ -47,7 +48,7 @@ def process_qa_pair(pair):
     return {
         "text": text,
         "meta": {
-            "language": lang_id.predict_lang(text),
+            "language": "en", #lang_id.predict_lang(text),
             "url": f"https://{site_name}/questions/{pair['question']['id']}",
             "timestamp": "2023-03-29",
             "source": "stackexchange",
@@ -69,7 +70,7 @@ for site in sites:
     if "stackoverflow_part" in site_name:
         site_name = "stackoverflow.com"
     # load qa_pairs
-    with open(os.path.join(LEMMA_DATA_DIR_SE, "qa_pairs", site), "r") as f:
+    with open(os.path.join(LEMMA_DATA_DIR_SE, "qa_pairs", site), "r", encoding="utf8") as f:
         qa_pairs = [json.loads(x) for x in f.readlines()]
         # process html to text
         with Pool(24) as p:
@@ -77,6 +78,6 @@ for site in sites:
 
     print(f"Writing {len(results)} results to {os.path.join(LEMMA_DATA_DIR_SE_OUT, site)}")
     
-    with open(os.path.join(LEMMA_DATA_DIR_SE_OUT, site), "w") as f:
+    with open(os.path.join(LEMMA_DATA_DIR_SE_OUT, site), "w", encoding="utf8") as f:
         for result in results:
             f.write(json.dumps(result) + "\n")
