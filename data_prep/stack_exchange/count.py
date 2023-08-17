@@ -13,7 +13,7 @@ def get_sites_count(path=LEMMA_DATA_DIR_SE):
         if site == ".DS_Store":
             continue
         # read the file
-        with open(os.path.join(path, site), "r") as f:
+        with open(os.path.join(path, site), "r", encoding="utf8") as f:
             # read # lines
             count = sum(1 for line in f)
             counts[site] = count-3 # subtract the header
