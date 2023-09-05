@@ -24,7 +24,31 @@ else:
 sites = list(counts.keys())[:SITES_COUNT]
 os.makedirs(os.path.join(LEMMA_DATA_DIR_SE, "parents"), exist_ok=True)
 
+def xmlNodeToDict(node):
+    res = {}
+    res["Id"] = node.attrib["Id"]
+    res["PostTypeId"] = node.attrib["PostTypeId"]
+
+    res["CreationDate"] = node.attrib["CreationDate"]
+    res["ClosedDate"] = node.attrib["ClosedDate"] if "ClosedDate" in node.attrib else ""
+    res["LastEditDate"] = node.attrib["LastEditDate"] if "LastEditDate" in node.attrib else ""
+    res["LastActivityDate"] = node.attrib["LastActivityDate"]
+
+    res["Score"] = int(node.attrib["Score"]) if "Score" in node.attrib else -1
+    res["ViewCount"] = int(node.attrib["ViewCount"]) if "ViewCount" in node.attrib else -1
+    res["CommentCount"] = int(node.attrib["CommentCount"]) if "CommentCount" in node.attrib else -1
+    res["FavoriteCount"] = int(node.attrib["FavoriteCount"]) if "FavoriteCount" in node.attrib else -1
+    res["AnswerCount"] = int(node.attrib["AnswerCount"]) if "AnswerCount" in node.attrib else -1
+    res["AcceptedAnswerId"] = node.attrib["AcceptedAnswerId"] if "AcceptedAnswerId" in node.attrib else ""
+
+    res["Body"] = node.attrib["Body"]
+    res["Title"] = node.attrib["Title"] if "Title" in node.attrib else ""
+    res["Tags"] = node.attrib["Tags"] if "Tags" in node.attrib else ""
+
+    return res
+
 def process_site(site):
+    siteName = site.split(".")[0]
     parents = {}
     qa_pairs = []
     print(f"[INFO] Processing {site}...")
@@ -44,14 +68,11 @@ def process_site(site):
                         # this is an answer
                         if root.attrib["ParentId"] not in parents:
                             parents[root.attrib["ParentId"]] = []
-                        parents[root.attrib["ParentId"]].append({
-                            "id": root.attrib["Id"],
-                            "score": root.attrib["Score"],
-                            "creation_date": root.attrib["CreationDate"],
-                            "text": root.attrib["Body"]
-                        })
+                        
+                        node = xmlNodeToDict(root)
+                        parents[root.attrib["ParentId"]].append(node)
         # write parents to file
-        with open(os.path.join(LEMMA_DATA_DIR_SE, "parents", site), "w", encoding="utf8") as f:
+        with open(os.path.join(LEMMA_DATA_DIR_SE, "parents", site + ".jsonl"), "w", encoding="utf8") as f:
             json.dump(parents, f)
 
     print(f"[INFO] Got {len(parents)} questions for {site}.")
@@ -69,37 +90,22 @@ def process_site(site):
                         # it has answers
                         if "AcceptedAnswerId" in root.attrib:
                             # this is a question with accepted answer
+                            node = xmlNodeToDict(root)
+                            node["Site"] = siteName
                             qa_pairs.append({
-                                "question": {
-                                    "id": post_id,
-                                    "score": root.attrib["Score"],
-                                    "view_count": root.attrib["ViewCount"],
-                                    "creation_date": root.attrib["CreationDate"],
-                                    "answer_count": len(parents[post_id]),
-                                    "answer_id": root.attrib["AcceptedAnswerId"],
-                                    "text": f"{root.attrib['Title']} {root.attrib['Body']}"
-                                },
+                                "question": node,
                                 "answers": parents[post_id]
                             })
                         else:
                             # this is a question without accepted answer
-                            print(f"[WARN] Question {post_id} has no accepted answer.")
+                            pass
+                            #print(f"[WARN] Question {post_id} has no accepted answer.")
                     else:
                         # this is a question without answers, just skip it.
-                        print(f"[WARN] Question {post_id} has no answers.")
-                        # if "Title" in root.attrib:
-                        #     # if there's a title => then a valid question
-                        #     body = root.attrib["Body"] if "Body" in root.attrib else ""
-                        #     score = root.attrib["Score"] if "Score" in root.attrib else 0
-                        #     qa_pairs.append({
-                        #         "question": {
-                        #             "id": post_id,
-                        #             "text": f"{root.attrib['Title']} {body}",
-                        #             "score": score
-                        #         },
-                        #     })
+                        pass
+                        #print(f"[WARN] Question {post_id} has no answers.")
+
     # write qa_pairs to file
-    
     print(f"[INFO] Writing {site} to file...")
     os.makedirs(os.path.join(LEMMA_DATA_DIR_SE, "qa_pairs"), exist_ok=True)
     with open(os.path.join(LEMMA_DATA_DIR_SE, "qa_pairs", site.removesuffix(".xml")+".jsonl"), "w", encoding="utf8") as f:

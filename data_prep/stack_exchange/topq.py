@@ -13,7 +13,7 @@ def extract_top_qas(filename: str, top_n: int):
     with open(filename, "r", encoding="utf8") as f:
         for i, line in enumerate(tqdm(f)):
             qa_pairs.append(json.loads(line))
-    qa_pairs = sorted(qa_pairs, key=lambda x: int(x["question"]["score"]), reverse=True)
+    qa_pairs = sorted(qa_pairs, key=lambda x: int(x["question"]["Score"]), reverse=True)
     
     # write the top_n questions to a file
     #filename is a full path, so we need to extract the filename from it and add top_n to the name

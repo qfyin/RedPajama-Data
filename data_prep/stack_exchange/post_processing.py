@@ -2,9 +2,10 @@ import re
 import os
 import sys
 import json
+import glob
 # import fasttext
 from bs4 import BeautifulSoup
-from multiprocessing import Pool
+#from multiprocessing import Pool
 
 sys.path.append("./")
 
@@ -33,51 +34,73 @@ def cleanhtml(raw_html):
 # lang_id = LanguageIdentification()
 
 LEMMA_DATA_DIR_SE = os.environ.get("LEMMA_DATA_DIR_SE", "./data/stack_exchange/")
-LEMMA_DATA_DIR_SE_OUT = os.environ.get("LEMMA_DATA_DIR_SE_OUT", "./data/stack_exchange/")
+os.makedirs(os.path.join(LEMMA_DATA_DIR_SE, "processed"), exist_ok=True)
 
-os.makedirs(os.path.join(LEMMA_DATA_DIR_SE_OUT), exist_ok=True)
+def extract_labels(question):
+    if "Tags" not in question:
+        return []
+    tags = question["Tags"].replace("><", "|").replace("<", "").replace(">", "")
+    return tags.split("|")
 
 def process_qa_pair(pair):
     # sort answers by score
-    if "answers" in pair:
-        pair["answers"] = sorted(pair["answers"], key=lambda x: x["score"], reverse=True)
-        answers = "\nA: ".join([ cleanhtml(x["text"]) for x in pair["answers"]])
-        text = f"Q: { cleanhtml(pair['question']['text'])}\nA: {answers}"
-    else:
-        text = f"Q: { cleanhtml(pair['question']['text'])}"
+    conversation = []
+    conversation.append({
+        "from": "human-q",
+        "value": cleanhtml(pair["question"]["Title"]) + "\n" + cleanhtml(pair["question"]["Body"]),
+        "score": pair["question"]["Score"],
+        "parent_id": -1,
+        "id": 0
+        })
+    total_score =  pair["question"]["Score"]
+    id = 1
+    for answer in pair["answers"]:
+        conversation.append({
+            "from": "human-a",
+            "value": cleanhtml(answer["Body"]),
+            "score": answer["Score"],
+            "parent_id": 0,
+            "id": id
+            })
+        total_score += answer["Score"]
+        id += 1
+    
+    site_name = pair["question"]["Site"] if "Site" in pair["question"] else "stackexchange"
     return {
-        "text": text,
-        "meta": {
-            "language": "en", #lang_id.predict_lang(text),
-            "url": f"https://{site_name}/questions/{pair['question']['id']}",
-            "timestamp": "2023-03-29",
-            "source": "stackexchange",
-            "question_score": pair["question"]["score"],
-        }
+        "id": "c1d9f50f86825a1a2302ec2449c17196",
+        "source": {
+            "name": site_name,
+            "location": f"https://{site_name}.com/questions/{pair['question']['Id']}",
+        },
+        "category_info": {
+            "category": "LinuxCmd",
+            "cmd_name": "",
+            "cmd_manual": ""
+        },
+        "score": total_score,
+        "labels": extract_labels(pair["question"]),
+        "other_metadata": {
+            "accepted_answer_id": pair["question"]["AcceptedAnswerId"],
+            "view_count": pair["question"]["ViewCount"],
+            "comment_count": pair["question"]["CommentCount"],
+            "favorite_count": pair["question"]["FavoriteCount"],
+            "answer_count": pair["question"]["AnswerCount"],
+            "creation_date": pair["question"]["CreationDate"],
+            "closed_date": pair["question"]["ClosedDate"],
+            "last_edit_date": pair["question"]["LastEditDate"],
+            "last_activity_date": pair["question"]["LastActivityDate"]
+        },
+        "conversation": conversation
     }
 
 # load qa_pairs
-sites = [x for x in os.listdir(os.path.join(LEMMA_DATA_DIR_SE, "qa_pairs"))]
-
-# if needed:
-# sort sites such that stackoverflow is processed first - to understand the memory pressure
-# if OOM -> split stackoverflow into multiple files
-# this won't hurt the completeness of the data, as each line is self-contained
-for site in sites:
-    print(f"Processing {site}")
-    results = []
-    site_name = site.removesuffix(".jsonl")
-    if "stackoverflow_part" in site_name:
-        site_name = "stackoverflow.com"
-    # load qa_pairs
-    with open(os.path.join(LEMMA_DATA_DIR_SE, "qa_pairs", site), "r", encoding="utf8") as f:
-        qa_pairs = [json.loads(x) for x in f.readlines()]
-        # process html to text
-        with Pool(24) as p:
-            results = p.map(process_qa_pair, qa_pairs)
-
-    print(f"Writing {len(results)} results to {os.path.join(LEMMA_DATA_DIR_SE_OUT, site)}")
-    
-    with open(os.path.join(LEMMA_DATA_DIR_SE_OUT, site), "w", encoding="utf8") as f:
-        for result in results:
-            f.write(json.dumps(result) + "\n")
+for filename in glob.glob(os.path.join(LEMMA_DATA_DIR_SE, "qa_pairs", "*.jsonl")):
+    if filename.endswith(".jsonl") and "top" not in filename:
+        print(f"Processing {filename}")
+        new_fullname = os.path.join(LEMMA_DATA_DIR_SE, "processed", os.path.basename(filename))
+        # load qa_pairs
+        with open(filename, "r", encoding="utf8") as fin, open(new_fullname, "w", encoding="utf8") as fout:
+            for line in fin:
+                pair = json.loads(line)
+                result = process_qa_pair(pair)
+                fout.write(json.dumps(result) + "\n")
