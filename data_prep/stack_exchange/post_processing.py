@@ -6,11 +6,13 @@ import glob
 # import fasttext
 from bs4 import BeautifulSoup
 #from multiprocessing import Pool
+import hashlib
 
 sys.path.append("./")
 
 site_name = ""
 CLEANR = re.compile('<.*?>|&([a-z0-9]+|#[0-9]{1,6}|#x[0-9a-f]{1,6});')
+ANSWERS_PER_QUESTION = 5
 
 def cleanhtml(raw_html):
     raw_html = raw_html.replace("<li>", "\n*")
@@ -36,6 +38,11 @@ def cleanhtml(raw_html):
 LEMMA_DATA_DIR_SE = os.environ.get("LEMMA_DATA_DIR_SE", "./data/stack_exchange/")
 os.makedirs(os.path.join(LEMMA_DATA_DIR_SE, "processed"), exist_ok=True)
 
+def create_unique_id(string):
+    sha256_hash = hashlib.md5(string.encode('utf-8'))
+    unique_id = sha256_hash.hexdigest()
+    return unique_id
+
 def extract_labels(question):
     if "Tags" not in question:
         return []
@@ -52,9 +59,17 @@ def process_qa_pair(pair):
         "parent_id": -1,
         "id": 0
         })
+    accepted_answer_id = pair["question"]["AcceptedAnswerId"]
+    answer_id = -1
     total_score =  pair["question"]["Score"]
+
     id = 1
-    for answer in pair["answers"]:
+    answers = sorted(pair["answers"], key=lambda x: int(x["Score"]), reverse=True)
+
+    for answer in answers[:ANSWERS_PER_QUESTION]:
+        if answer["Id"] == accepted_answer_id:
+            answer_id = id
+
         conversation.append({
             "from": "human-a",
             "value": cleanhtml(answer["Body"]),
@@ -66,11 +81,12 @@ def process_qa_pair(pair):
         id += 1
     
     site_name = pair["question"]["Site"] if "Site" in pair["question"] else "stackexchange"
+    question_url = f"https://{site_name}.com/questions/{pair['question']['Id']}"
     return {
-        "id": "c1d9f50f86825a1a2302ec2449c17196",
+        "id": create_unique_id(question_url),
         "source": {
             "name": site_name,
-            "location": f"https://{site_name}.com/questions/{pair['question']['Id']}",
+            "location": question_url,
         },
         "category_info": {
             "category": "LinuxCmd",
@@ -80,7 +96,7 @@ def process_qa_pair(pair):
         "score": total_score,
         "labels": extract_labels(pair["question"]),
         "other_metadata": {
-            "accepted_answer_id": pair["question"]["AcceptedAnswerId"],
+            "accepted_answer_id": answer_id,
             "view_count": pair["question"]["ViewCount"],
             "comment_count": pair["question"]["CommentCount"],
             "favorite_count": pair["question"]["FavoriteCount"],
